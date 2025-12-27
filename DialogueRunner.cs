@@ -4,137 +4,164 @@ using System.Collections.Generic;
 public class DialogueRunner : MonoBehaviour
 {
     [Header("Configuración")]
-    public DialogueUI dialogueUI; 
-    public DialogueGraphAsset graph; 
-    
+    public DialogueUI dialogueUI;
+    public DialogueGraphAsset graph;
+
     private DialogueNodeData currentNode;
 
-    void Start() {
-        if (graph == null || graph.nodes.Count == 0) {
-            Debug.LogError("No hay grafo asignado o el grafo está vacío.");
+    void Start()
+    {
+        if (graph == null || graph.nodes.Count == 0)
+        {
+            Debug.LogError("No hay grafo asignado o está vacío.");
             return;
         }
 
-        // 1. Suscribirse a los eventos de la UI
-        if (dialogueUI != null) dialogueUI.OnOptionSelected += OnOptionSelected;
+        if (dialogueUI != null)
+            dialogueUI.OnOptionSelected += OnOptionSelected;
 
-        // 2. Buscar el nodo de entrada (START)
         currentNode = graph.nodes.Find(n => n.type == NodeType.Start);
-        
-        if (currentNode != null) {
+
+        if (currentNode != null)
             ShowCurrentNode();
-        } else {
-            Debug.LogError("No se encontró un nodo de tipo START en el grafo.");
-        }
+        else
+            Debug.LogError("No existe un nodo START.");
     }
 
-    void ShowCurrentNode() {
+    void ShowCurrentNode()
+    {
         if (currentNode == null) return;
 
-        // --- LÓGICA DE NODOS AUTOMÁTICOS (SIN INTERACCIÓN) ---
+        // ───────── NODOS AUTOMÁTICOS ─────────
 
-        if (currentNode.type == NodeType.Start) {
-            // Salta automáticamente a la primera conexión
-            if (currentNode.options.Count > 0 && currentNode.options[0].targetNodeId != -1) {
-                JumpToNode(currentNode.options[0].targetNodeId);
-            }
+        if (currentNode.type == NodeType.Start)
+        {
+            JumpFirst();
             return;
         }
 
-        if (currentNode.type == NodeType.InventoryEvent) {
-            // Ejecutar acción de inventario
+        if (currentNode.type == NodeType.InventoryEvent)
+        {
             if (currentNode.inventoryAction == InventoryAction.Add)
                 InventoryManager.Instance.AddItem(currentNode.itemName, currentNode.requiredValue);
             else
                 InventoryManager.Instance.RemoveItem(currentNode.itemName, currentNode.requiredValue);
 
-            // Saltar al siguiente nodo
-            if (currentNode.options.Count > 0 && currentNode.options[0].targetNodeId != -1) {
-                JumpToNode(currentNode.options[0].targetNodeId);
-            }
+            JumpFirst();
             return;
         }
 
-        if (currentNode.type == NodeType.Condition) {
-            // Comprobar si tenemos el item/cantidad necesaria
-            bool success = InventoryManager.Instance.HasEnough(currentNode.variableName, currentNode.requiredValue);
-            int nextId = success ? currentNode.options[0].targetNodeId : currentNode.options[1].targetNodeId;
-            
-            if (nextId != -1) JumpToNode(nextId);
+        if (currentNode.type == NodeType.Condition)
+        {
+            bool ok = InventoryManager.Instance.HasEnough(
+                currentNode.variableName,
+                currentNode.requiredValue
+            );
+
+            int next = ok ? currentNode.options[0].targetNodeId
+                          : currentNode.options[1].targetNodeId;
+
+            JumpToNode(next);
             return;
         }
 
-        if (currentNode.type == NodeType.Random) {
+        if (currentNode.type == NodeType.Random)
+        {
             HandleRandomNode();
             return;
         }
 
-        // --- LÓGICA DE NODOS VISUALES (CON INTERACCIÓN) ---
+        // 🔹 NUEVO: Sprite Event (NO bloquea)
+        if (currentNode.type == NodeType.SpriteEvent)
+        {
+            if (dialogueUI != null)
+                dialogueUI.SetSprite(
+                    currentNode.imageIndex,
+                    currentNode.spriteToSet
+                );
 
-        if (currentNode.type == NodeType.Dialogue) {
+            JumpFirst();
+            return;
+        }
+
+        // ───────── NODOS VISUALES ─────────
+
+        if (currentNode.type == NodeType.Dialogue)
+        {
             dialogueUI.HideAllOptions();
-            
-            // Procesar etiquetas estilo {item} en el texto
+
             string processedText = ProcessTags(currentNode.text);
-            
-            // ENVIAR NOMBRE Y TEXTO A LA UI
-            // Nota: Asegúrate de que DialogueUI.ShowDialogue acepte (string, string)
             dialogueUI.ShowDialogue(currentNode.characterName, processedText);
 
-            // Preparar y mostrar opciones
-            List<string> optTexts = new List<string>();
-            foreach (var o in currentNode.options) optTexts.Add(o.text);
-            dialogueUI.ShowOptions(optTexts);
+            List<string> opts = new();
+            foreach (var o in currentNode.options)
+                opts.Add(o.text);
+
+            dialogueUI.ShowOptions(opts);
         }
-        
-        if (currentNode.type == NodeType.End) {
+
+        if (currentNode.type == NodeType.End)
+        {
             dialogueUI.ShowDialogue("", "Fin de la conversación.");
             dialogueUI.HideAllOptions();
         }
     }
 
-    void HandleRandomNode() {
-        if (currentNode.options == null || currentNode.options.Count == 0) return;
+    void JumpFirst()
+    {
+        if (currentNode.options.Count > 0)
+            JumpToNode(currentNode.options[0].targetNodeId);
+    }
 
-        int totalWeight = 0;
-        foreach (var opt in currentNode.options) totalWeight += opt.chance;
+    void HandleRandomNode()
+    {
+        int total = 0;
+        foreach (var o in currentNode.options) total += o.chance;
 
-        int randomValue = Random.Range(0, totalWeight);
-        int cursor = 0;
+        int r = Random.Range(0, total);
+        int acc = 0;
 
-        foreach (var opt in currentNode.options) {
-            cursor += opt.chance;
-            if (randomValue < cursor) {
-                if (opt.targetNodeId != -1) JumpToNode(opt.targetNodeId);
+        foreach (var o in currentNode.options)
+        {
+            acc += o.chance;
+            if (r < acc)
+            {
+                JumpToNode(o.targetNodeId);
                 break;
             }
         }
     }
 
-    string ProcessTags(string input) {
+    string ProcessTags(string input)
+    {
         if (string.IsNullOrEmpty(input)) return "";
+
         string output = input;
         int start = output.IndexOf('{');
-        while (start != -1) {
+
+        while (start != -1)
+        {
             int end = output.IndexOf('}', start);
-            if (end != -1) {
-                string itemName = output.Substring(start + 1, end - start - 1);
-                string amount = InventoryManager.Instance.GetAmount(itemName).ToString();
-                output = output.Remove(start, end - start + 1).Insert(start, amount);
-                start = output.IndexOf('{', start + amount.Length);
-            } else break;
+            if (end == -1) break;
+
+            string key = output.Substring(start + 1, end - start - 1);
+            string value = InventoryManager.Instance.GetAmount(key).ToString();
+
+            output = output.Remove(start, end - start + 1).Insert(start, value);
+            start = output.IndexOf('{', start + value.Length);
         }
+
         return output;
     }
 
-    void OnOptionSelected(int index) {
-        if (currentNode != null && index >= 0 && index < currentNode.options.Count) {
-            int nextId = currentNode.options[index].targetNodeId;
-            if (nextId != -1) JumpToNode(nextId);
-        }
+    void OnOptionSelected(int index)
+    {
+        if (index < 0 || index >= currentNode.options.Count) return;
+        JumpToNode(currentNode.options[index].targetNodeId);
     }
 
-    void JumpToNode(int id) {
+    void JumpToNode(int id)
+    {
         currentNode = graph.nodes.Find(n => n.id == id);
         ShowCurrentNode();
     }
