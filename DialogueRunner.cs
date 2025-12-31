@@ -43,9 +43,15 @@ public class DialogueRunner : MonoBehaviour
         if (currentNode.type == NodeType.InventoryEvent)
         {
             if (currentNode.inventoryAction == InventoryAction.Add)
-                InventoryManager.Instance.AddItem(currentNode.itemName, currentNode.requiredValue);
+                InventoryManager.Instance.AddItem(
+                    currentNode.itemName,
+                    currentNode.requiredValue
+                );
             else
-                InventoryManager.Instance.RemoveItem(currentNode.itemName, currentNode.requiredValue);
+                InventoryManager.Instance.RemoveItem(
+                    currentNode.itemName,
+                    currentNode.requiredValue
+                );
 
             JumpFirst();
             return;
@@ -53,13 +59,20 @@ public class DialogueRunner : MonoBehaviour
 
         if (currentNode.type == NodeType.Condition)
         {
+            if (currentNode.options.Count < 2)
+            {
+                Debug.LogError("Nodo Condition mal configurado.");
+                return;
+            }
+
             bool ok = InventoryManager.Instance.HasEnough(
                 currentNode.variableName,
                 currentNode.requiredValue
             );
 
-            int next = ok ? currentNode.options[0].targetNodeId
-                          : currentNode.options[1].targetNodeId;
+            int next = ok
+                ? currentNode.options[0].targetNodeId
+                : currentNode.options[1].targetNodeId;
 
             JumpToNode(next);
             return;
@@ -71,7 +84,7 @@ public class DialogueRunner : MonoBehaviour
             return;
         }
 
-        // 🔹 NUEVO: Sprite Event (NO bloquea)
+        // 🖼️ SPRITE EVENT (NO bloquea)
         if (currentNode.type == NodeType.SpriteEvent)
         {
             if (dialogueUI != null)
@@ -84,6 +97,21 @@ public class DialogueRunner : MonoBehaviour
             return;
         }
 
+        // 🔊 AUDIO EVENT (NO bloquea)
+        if (currentNode.type == NodeType.AudioEvent)
+        {
+            if (dialogueUI != null)
+                dialogueUI.HandleAudio(
+    currentNode.audioSourceIndex,
+    currentNode.audioClip,
+    currentNode.audioAction,
+    currentNode.loop // ← pasamos la propiedad loop
+);
+
+            JumpFirst();
+            return;
+        }
+
         // ───────── NODOS VISUALES ─────────
 
         if (currentNode.type == NodeType.Dialogue)
@@ -91,7 +119,10 @@ public class DialogueRunner : MonoBehaviour
             dialogueUI.HideAllOptions();
 
             string processedText = ProcessTags(currentNode.text);
-            dialogueUI.ShowDialogue(currentNode.characterName, processedText);
+            dialogueUI.ShowDialogue(
+                currentNode.characterName,
+                processedText
+            );
 
             List<string> opts = new();
             foreach (var o in currentNode.options)
@@ -116,7 +147,8 @@ public class DialogueRunner : MonoBehaviour
     void HandleRandomNode()
     {
         int total = 0;
-        foreach (var o in currentNode.options) total += o.chance;
+        foreach (var o in currentNode.options)
+            total += o.chance;
 
         int r = Random.Range(0, total);
         int acc = 0;
@@ -144,10 +176,18 @@ public class DialogueRunner : MonoBehaviour
             int end = output.IndexOf('}', start);
             if (end == -1) break;
 
-            string key = output.Substring(start + 1, end - start - 1);
-            string value = InventoryManager.Instance.GetAmount(key).ToString();
+            string key =
+                output.Substring(start + 1, end - start - 1);
 
-            output = output.Remove(start, end - start + 1).Insert(start, value);
+            string value =
+                InventoryManager.Instance
+                    .GetAmount(key)
+                    .ToString();
+
+            output = output
+                .Remove(start, end - start + 1)
+                .Insert(start, value);
+
             start = output.IndexOf('{', start + value.Length);
         }
 
@@ -156,7 +196,9 @@ public class DialogueRunner : MonoBehaviour
 
     void OnOptionSelected(int index)
     {
-        if (index < 0 || index >= currentNode.options.Count) return;
+        if (index < 0 || index >= currentNode.options.Count)
+            return;
+
         JumpToNode(currentNode.options[index].targetNodeId);
     }
 

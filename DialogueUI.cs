@@ -14,6 +14,9 @@ public class DialogueUI : MonoBehaviour
     [Header("Sprite Targets")]
     [SerializeField] private List<Image> spriteTargets;
 
+    [Header("Audio Targets")]
+    [SerializeField] private List<AudioSource> audioSources;
+
     public Action<int> OnOptionSelected;
 
     void Awake()
@@ -22,7 +25,9 @@ public class DialogueUI : MonoBehaviour
         {
             int index = i;
             optionButtons[i].onClick.RemoveAllListeners();
-            optionButtons[i].onClick.AddListener(() => OnOptionSelected?.Invoke(index));
+            optionButtons[i].onClick.AddListener(
+                () => OnOptionSelected?.Invoke(index)
+            );
             optionButtons[i].gameObject.SetActive(false);
         }
     }
@@ -83,18 +88,17 @@ public class DialogueUI : MonoBehaviour
         if (sprite == null)
         {
             img.sprite = null;
-            img.enabled = false; // 🔹 Oculta el Image
+            img.enabled = false;
         }
         else
         {
             img.sprite = sprite;
-            img.enabled = true;  // 🔹 Muestra el Image
+            img.enabled = true;
         }
     }
 
     /// <summary>
     /// Oculta todos los Images y elimina sus sprites.
-    /// Útil al iniciar un diálogo o cambiar de escena.
     /// </summary>
     public void ClearAllSprites()
     {
@@ -107,4 +111,39 @@ public class DialogueUI : MonoBehaviour
             img.enabled = false;
         }
     }
+
+    // ─────────────────────────────────────────────
+    // AUDIO
+    // ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Maneja eventos de audio desde el diálogo.
+    /// </summary>
+   public void HandleAudio(int index, AudioClip clip, AudioAction action, bool loop = false)
+{
+    if (audioSources == null) return;
+    if (index < 0 || index >= audioSources.Count) return;
+
+    AudioSource src = audioSources[index];
+    if (src == null) return;
+
+    switch (action)
+    {
+        case AudioAction.Play:
+            src.clip = clip;
+            src.loop = loop; // ← aquí usamos la nueva propiedad
+            src.Play();
+            break;
+
+        case AudioAction.PlayOneShot:
+            src.loop = false; // one shot nunca hace loop
+            if (clip != null)
+                src.PlayOneShot(clip);
+            break;
+
+        case AudioAction.Stop:
+            src.Stop();
+            break;
+    }
+}
 }
