@@ -8,4 +8,5 @@ Inventory/Items
 Random
 Sprite
 
-27 DEC.- Now we can control Sprites
+27 DEC.- We can control Sprites.
+31 DEC.- Added Sound and Music support.
