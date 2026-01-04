@@ -36,14 +36,21 @@ public class DialogueOptionData
 }
 
 [Serializable]
+public class DialogueLineData
+{
+    public string text;
+    public int targetIndex;
+}
+
+[Serializable]
 public class DialogueNodeData
 {
     public int id;
     public NodeType type;
 
     // ───────── DIALOGUE ─────────
-    public string characterName;
-    public string text;
+    // Ahora se usan varias líneas, cada una con target.
+    public List<DialogueLineData> lines = new List<DialogueLineData>();
 
     // ───────── EDITOR DATA ─────────
     public Vector2 position;
@@ -62,12 +69,11 @@ public class DialogueNodeData
     public int imageIndex;
     public Sprite spriteToSet;
 
-    
     // ───────── AUDIO EVENT ─────────
     public int audioSourceIndex;
     public AudioClip audioClip;
     public AudioAction audioAction;
-    public bool loop; // ← nueva propiedad
+    public bool loop; // ← propiedad de loop para audio
 }
 
 [CreateAssetMenu(menuName = "Dialogue/Dialogue Graph")]
