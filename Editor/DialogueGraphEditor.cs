@@ -7,6 +7,7 @@ public class DialogueGraphEditor : EditorWindow
 {
     private List<DialogueNodeData> nodes = new();
     private int nextId = 0;
+
     private int fromNodeId = -1;
     private int fromOptIdx = -1;
 
@@ -16,6 +17,7 @@ public class DialogueGraphEditor : EditorWindow
     private const float maxZoom = 2.0f;
 
     private DialogueNodeData draggingNode = null;
+    private DialogueNodeData resizingNode = null;
     private DialogueGraphAsset loadedAsset;
 
     [MenuItem("Tools/Dialogue Editor")]
@@ -58,23 +60,39 @@ public class DialogueGraphEditor : EditorWindow
 
         if (zoomLevel > 0.4f)
         {
-            Rect contentRect = new(screenRect.x + 5, screenRect.y + 20 * zoomLevel,
-                screenRect.width - 10, screenRect.height - 25 * zoomLevel);
+            Rect contentRect = new(
+                screenRect.x + 5,
+                screenRect.y + 20 * zoomLevel,
+                screenRect.width - 10,
+                screenRect.height - 25 * zoomLevel
+            );
 
             GUILayout.BeginArea(contentRect);
-            DrawNodeInside(node);
+            DrawNodeInside(node, contentRect.width);
             GUILayout.EndArea();
         }
+
+        // ───────── RESIZE HANDLE ─────────
+        float handleSize = 15f * zoomLevel;
+        Rect resizeHandle = new Rect(
+            screenRect.xMax - handleSize,
+            screenRect.yMax - handleSize,
+            handleSize,
+            handleSize
+        );
+
+        EditorGUIUtility.AddCursorRect(resizeHandle, MouseCursor.ResizeUpLeft);
+        GUI.Box(resizeHandle, ""); // opcional: dibuja un cuadradito
+
+        HandleResize(node, resizeHandle);
     }
 
-    private void DrawNodeInside(DialogueNodeData node)
+    private void DrawNodeInside(DialogueNodeData node, float contentWidth)
     {
         switch (node.type)
         {
             case NodeType.Dialogue:
-                node.characterName = EditorGUILayout.TextField("Personaje", node.characterName);
-                node.text = EditorGUILayout.TextArea(node.text, GUILayout.MinHeight(40));
-                DrawNodeOptions(node, true);
+                DrawDialogueNode(node, contentWidth);
                 break;
 
             case NodeType.Condition:
@@ -86,6 +104,7 @@ public class DialogueGraphEditor : EditorWindow
                     fromNodeId = node.id;
                     fromOptIdx = 0;
                 }
+
                 if (GUILayout.Button("FALSE →"))
                 {
                     fromNodeId = node.id;
@@ -149,6 +168,66 @@ public class DialogueGraphEditor : EditorWindow
         }
     }
 
+    private void DrawDialogueNode(DialogueNodeData node, float contentWidth)
+    {
+        if (node.lines == null)
+            node.lines = new List<DialogueLineData>();
+
+        float controlsWidth = 90f;
+        float textAreaWidth = Mathf.Max(50f, contentWidth - controlsWidth - 10f);
+
+        for (int i = 0; i < node.lines.Count; i++)
+        {
+            GUILayout.BeginHorizontal();
+
+            GUILayout.BeginVertical(GUILayout.Width(textAreaWidth));
+            node.lines[i].text = EditorGUILayout.TextArea(
+                node.lines[i].text,
+                GUILayout.MinHeight(20),
+                GUILayout.ExpandHeight(false),
+                GUILayout.Width(textAreaWidth+50)
+            );
+            GUILayout.EndVertical();
+
+            GUILayout.BeginVertical(GUILayout.Width(controlsWidth));
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("X", GUILayout.Width(20)))
+            {
+                node.lines.RemoveAt(i);
+                GUILayout.EndHorizontal();
+                GUILayout.EndVertical();
+                GUILayout.EndHorizontal();
+                break;
+            }
+
+            node.lines[i].targetIndex = EditorGUILayout.IntField(
+                node.lines[i].targetIndex,
+                GUILayout.Width(20)
+            );
+            GUILayout.EndHorizontal();
+            GUILayout.EndVertical();
+
+            GUILayout.EndHorizontal();
+            GUILayout.Space(4);
+        }
+
+        if (GUILayout.Button("+ Añadir línea"))
+        {
+            if (node.lines == null)
+                node.lines = new List<DialogueLineData>();
+
+            node.lines.Add(new DialogueLineData
+            {
+                text = string.Empty,
+                targetIndex = 0
+            });
+        }
+
+        GUILayout.Space(8);
+
+        DrawNodeOptions(node, true);
+    }
+
     private void DrawNodeOptions(DialogueNodeData node, bool isDialogue)
     {
         for (int i = 0; i < node.options.Count; i++)
@@ -169,6 +248,7 @@ public class DialogueGraphEditor : EditorWindow
             if (GUILayout.Button("x", GUILayout.Width(20)))
             {
                 node.options.RemoveAt(i);
+                GUILayout.EndHorizontal();
                 break;
             }
 
@@ -177,6 +257,36 @@ public class DialogueGraphEditor : EditorWindow
 
         if (GUILayout.Button("+ Opción"))
             node.options.Add(new DialogueOptionData());
+    }
+
+    // ─────────────────────────────────────────────
+    // HANDLE DE RESIZE
+    // ─────────────────────────────────────────────
+
+    private void HandleResize(DialogueNodeData node, Rect handle)
+    {
+        Event e = Event.current;
+
+        if (e.type == EventType.MouseDown && handle.Contains(e.mousePosition))
+        {
+            resizingNode = node;
+            e.Use();
+        }
+
+        if (e.type == EventType.MouseDrag && resizingNode == node)
+        {
+            Vector2 delta = e.delta / zoomLevel;
+            node.size += delta;
+            node.size.x = Mathf.Max(100, node.size.x);
+            node.size.y = Mathf.Max(60, node.size.y);
+            e.Use();
+        }
+
+        if (e.type == EventType.MouseUp && resizingNode == node)
+        {
+            resizingNode = null;
+            e.Use();
+        }
     }
 
     // ─────────────────────────────────────────────
@@ -266,6 +376,7 @@ public class DialogueGraphEditor : EditorWindow
         }
 
         loadedAsset.nodes = nodes.Select(CloneNode).ToList();
+
         EditorUtility.SetDirty(loadedAsset);
         AssetDatabase.SaveAssets();
     }
@@ -289,8 +400,13 @@ public class DialogueGraphEditor : EditorWindow
         {
             id = n.id,
             type = n.type,
-            characterName = n.characterName,
-            text = n.text,
+            lines = n.lines != null
+                ? n.lines.Select(l => new DialogueLineData
+                {
+                    text = l.text,
+                    targetIndex = l.targetIndex
+                }).ToList()
+                : new List<DialogueLineData>(),
             position = n.position,
             size = n.size,
             inventoryAction = n.inventoryAction,
@@ -343,12 +459,12 @@ public class DialogueGraphEditor : EditorWindow
             for (int i = 0; i < n.options.Count; i++)
             {
                 if (n.options[i].targetNodeId == -1) continue;
-
                 var target = nodes.Find(t => t.id == n.options[i].targetNodeId);
                 if (target == null) continue;
 
                 Vector3 start = GetOutputPos(n, i);
                 Vector3 end = GetInputPos(target);
+
                 float tan = 50f * zoomLevel;
 
                 Handles.DrawBezier(start, end,
@@ -383,7 +499,6 @@ public class DialogueGraphEditor : EditorWindow
     private Vector3 GetOutputPos(DialogueNodeData n, int optIdx)
     {
         Rect r = ScaleRect(new Rect(n.position, n.size));
-
         float yBase = 44 * zoomLevel;
         float spacing = 23.5f * zoomLevel;
         float yOffset = yBase + (optIdx * spacing);
@@ -409,10 +524,12 @@ public class DialogueGraphEditor : EditorWindow
     }
 
     private Rect ScaleRect(Rect r) =>
-        new Rect((r.x + panOffset.x) * zoomLevel,
+        new Rect(
+            (r.x + panOffset.x) * zoomLevel,
             (r.y + panOffset.y) * zoomLevel,
             r.width * zoomLevel,
-            r.height * zoomLevel);
+            r.height * zoomLevel
+        );
 
     private void HandleEvents()
     {
@@ -441,7 +558,15 @@ public class DialogueGraphEditor : EditorWindow
             {
                 if (fromNodeId != -1 && fromNodeId != hit.id)
                 {
-                    nodes.Find(n => n.id == fromNodeId).options[fromOptIdx].targetNodeId = hit.id;
+                    var fromNode = nodes.Find(n => n.id == fromNodeId);
+                    if (fromNode != null &&
+                        fromNode.options != null &&
+                        fromOptIdx >= 0 &&
+                        fromOptIdx < fromNode.options.Count)
+                    {
+                        fromNode.options[fromOptIdx].targetNodeId = hit.id;
+                    }
+
                     fromNodeId = -1;
                     e.Use();
                 }
@@ -450,10 +575,10 @@ public class DialogueGraphEditor : EditorWindow
                     draggingNode = hit;
                     e.Use();
                 }
-            }
-            else
-            {
-                fromNodeId = -1;
+                else
+                {
+                    fromNodeId = -1;
+                }
             }
         }
 
@@ -464,6 +589,9 @@ public class DialogueGraphEditor : EditorWindow
         }
 
         if (e.type == EventType.MouseUp)
+        {
             draggingNode = null;
+            resizingNode = null;
+        }
     }
 }
